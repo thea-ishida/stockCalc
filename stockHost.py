@@ -71,12 +71,12 @@ def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
     tot_shares = shares# c
     left_over_cash = 0 #(D)
     drip_data = []
+    #print("Starting amount of shares: ", tot_shares)
 
     price_history = dict(get_history(selected_stock, starting_day, end_date)) # store in a dictionary to get key, value
 
     for starting_day, dividend_per_share in dividend_collection.items():
         date_str = starting_day.strftime("%Y-%m-%d")
-        #print("here:", date_str, "you will calculate the amount of dividend received (B) on this date", dividend_per_share)
         tot_div = Decimal(str(dividend_per_share)) * tot_shares #total dividends received
         available_cash = tot_div + left_over_cash
 
@@ -86,22 +86,27 @@ def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
             continue
 
         price = Decimal(str(price_history[date_str])) # closing price
-   #     print(price, "<--------", end_date)
 
-      #  print(price)
-        #if more shares can be bought
         if available_cash >=  price:
             new_shares = available_cash // price       # (C) to get as many shares as we can if we can afford with our current available cash
             left_over_cash = available_cash % price    # (D)   a % b = a - (a // b) * b
             tot_shares += new_shares                   # Update (A)
         else:
             left_over_cash = available_cash
-        drip_data.append((date_str, float(tot_shares)))  # For plotting or display
-       # print(drip_data, " <------------- drip data")
 
-     #   print(left_over_cash)
+        total_value = (tot_shares * price) + left_over_cash
 
-    return left_over_cash
+        drip_data.append({
+            'date': date_str,
+            'shares': float(tot_shares),
+            'price': float(price),
+            'cash': float(left_over_cash),
+            'total_value': float(total_value)
+        })
+
+    st.write("Current Cash Value: ", total_value)
+
+    return drip_data
 
         # if the amt (B) is large enough to purchase a share or more on this date (per close price)
         # you would make this buy, let's call the number of shares bough (C) and leftover cash (D)
@@ -119,6 +124,8 @@ def main():
     #sidebar inputs
     st.sidebar.header("Enter your stock symbol")
     ticker= st.sidebar.text_input("Stock Symbol", "AAPL")
+   # amount= st.sidebar.text_input("Starting Amount", "200000")
+
     amount = st.sidebar.number_input("Initial Investment", min_value=0.0, value=0.0)
     start_date = st.sidebar.text_input("Start Date", "2022-02-01")
     end_date = st.sidebar.text_input("End Date", "2024-12-12")
@@ -156,30 +163,40 @@ def main():
 
     data = []
     shares_from_initial = determineShares(amount, starting_day.strftime("%Y-%m-%d"), selected_stock, end_date)
-    #print(shares_from_initial, "SHARES FROM INITIAL")
+   # print(shares_from_initial, "SHARES FROM INITIAL")
 
     for date, dividends_per_share in new_dividends.items():
         div_as_decimal = Decimal(str(dividends_per_share))
         div_total, current_total = calculate_div_growth(shares_from_initial, div_as_decimal, current_total)
         total_dividends += div_total  # add up dividend payouts from each payment
 
-        data.append((date.date(), float(current_total)))
+
 
     st.write("Total dividends: ", str(total_dividends))
 
     #for DRIP
-    drip_result = drip(new_dividends, selected_stock, shares_from_initial, starting_day, end_date)
-    st.write("Current Cash Value: ", drip_result)
+    drip_results = drip(new_dividends, selected_stock, shares_from_initial, start_date, end_date)
+    df = pd.DataFrame(drip_results)
+    df['date'] = pd.to_datetime(df['date'])
+    df.set_index('date', inplace=True)
+
+    st.subheader("Investment Growth Until End Date")
+    st.line_chart(df['total_value'])
 
 
 
+    # drip_result = drip(new_dividends, selected_stock, shares_from_initial, starting_day, end_date)
+   # st.write("Current Number of Shares after DRIP: ", drip_result[1]) # [current cash, total shares]
+
+   # stockHistory = get_history(selected_stock, starting_day, end_date)
+    # get the closing price closest to/on the starting date
+  #  closeDate, price = stockHistory[0]
+   # print("The closing price" , price)
+    #instead of showing the current cash value, calculate (number of shares after DRIP x current stock price) + any left over cash in the account
+   # current_cash_value = (float(drip_result[1]) * price) + float(drip_result[0])
+
+    #print(current_cash_value)
 
 
-    # plot the growth of the investment
-    # 1. create pandas dataframe from the data which has the date and current total
-    # 2. put date as dataframe index
-    df = pd.DataFrame(data, columns= ["Date", "Total Dividends Collected"])
-    df.set_index("Date", inplace=True)
-    st.line_chart(df)
 
 main()
