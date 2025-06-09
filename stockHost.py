@@ -68,6 +68,11 @@ def determineShares(amount, startDate, selected_stock, end_date):
 
 def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
    # print("got here")
+
+    #if not dividend_collection:
+    #    st.info("The stock you selected did not pay any dividends during the selected period.")
+     #   return []
+
     tot_shares = shares# c
     left_over_cash = 0 #(D)
     drip_data = []
@@ -80,9 +85,8 @@ def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
         tot_div = Decimal(str(dividend_per_share)) * tot_shares #total dividends received
         available_cash = tot_div + left_over_cash
 
-       # print("date_str", date_str)
         if date_str not in price_history:
-           # print(f"No stock price found for {date_str}")
+            print(f"No stock price found for {date_str}")
             continue
 
         price = Decimal(str(price_history[date_str])) # closing price
@@ -118,85 +122,72 @@ def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
         # Do this until the (B) is large enough to purchase a new share of the stock then do so
 
 
-
-
 def main():
     #sidebar inputs
-    st.sidebar.header("Enter your stock symbol")
-    ticker= st.sidebar.text_input("Stock Symbol", "AAPL")
-   # amount= st.sidebar.text_input("Starting Amount", "200000")
-
+    st.sidebar.header("Enter your stock information")
+    ticker= st.sidebar.text_input("Enter stock ticker (e.g. AAPL):","AAPL")
     amount = st.sidebar.number_input("Initial Investment", min_value=0.0, value=0.0)
-    start_date = st.sidebar.text_input("Start Date", "2022-02-01")
-    end_date = st.sidebar.text_input("End Date", "2024-12-12")
-    st.write(f"Started with an initial investment of: $", amount)
+    start_date = st.sidebar.date_input("Start Date").strftime("%Y-%m-%d")
+    end_date = st.sidebar.date_input("End Date").strftime("%Y-%m-%d")
 
-    errors = check_valid_inputs(ticker, amount, start_date, end_date)
-    if errors:
-        for error in errors:
-            st.error(error)
-        #print(errors)
-        return
+    calculate_button = st.sidebar.button("Calculate")
 
-    selected_stock = fy.Ticker(ticker)
-   # print("the selected stock", selected_stock)
+    if calculate_button:
+        # handling invalid inputs
+        errors = check_valid_inputs(ticker, amount, start_date, end_date)
+        if errors:
+            for error in errors:
+                st.error(error)
+                return
 
-    # look up dividends the company paid since
-    dividends = selected_stock.dividends
-    starting_day = pd.to_datetime(start_date)
+        selected_stock = fy.Ticker(ticker)
 
-    # calculate the number of times you receive the dividend and add up the total sum
-    timezone = dividends.index.tz
-    if timezone is not None:
-        starting_day = starting_day.tz_localize(timezone)
-    else:
-        starting_day = starting_day.localize(None)
+        st.write(f"Started with an initial investment of: $", amount)
 
-    #find the number of shares:
+        # look up dividends the company paid since
+        dividends = selected_stock.dividends
+        starting_day = pd.to_datetime(start_date)
 
-    # keep dividend payments that happened after the starting date
-    new_dividends = dividends[dividends.index >= starting_day]
-   # print(f"new dividends since {starting_day}", new_dividends)
+        # calculate the number of times you receive the dividend and add up the total sum
+        timezone = dividends.index.tz
+        if timezone is not None:
+            starting_day = starting_day.tz_localize(timezone)
+        else:
+            starting_day = starting_day.localize(None)
 
-    current_total = Decimal("0.0")  # holds running total
-    total_dividends = Decimal("0.0")  # track the payout
-
-    data = []
-    shares_from_initial = determineShares(amount, starting_day.strftime("%Y-%m-%d"), selected_stock, end_date)
-   # print(shares_from_initial, "SHARES FROM INITIAL")
-
-    for date, dividends_per_share in new_dividends.items():
-        div_as_decimal = Decimal(str(dividends_per_share))
-        div_total, current_total = calculate_div_growth(shares_from_initial, div_as_decimal, current_total)
-        total_dividends += div_total  # add up dividend payouts from each payment
+        # keep dividend payments that happened after the starting date
+        new_dividends = selected_stock.dividends.loc[start_date:end_date]
+        # print("new dividends: ----> ", new_dividends)
+        if new_dividends.empty:
+            #print("This stock does not produce any dividends.")
+            st.info("This stock does not produce any dividends.")
+            return
 
 
+        current_total = Decimal("0.0")  # holds running total
+        total_dividends = Decimal("0.0")  # track the payout
 
-    st.write("Total dividends: ", str(total_dividends))
+        data = []
+        shares_from_initial = determineShares(amount, starting_day.strftime("%Y-%m-%d"), selected_stock, end_date)
+        # print(shares_from_initial, "SHARES FROM INITIAL")
 
-    #for DRIP
-    drip_results = drip(new_dividends, selected_stock, shares_from_initial, start_date, end_date)
-    df = pd.DataFrame(drip_results)
-    df['date'] = pd.to_datetime(df['date'])
-    df.set_index('date', inplace=True)
-
-    st.subheader("Investment Growth Until End Date")
-    st.line_chart(df['total_value'])
+        for date, dividends_per_share in new_dividends.items():
+            div_as_decimal = Decimal(str(dividends_per_share))
+            div_total, current_total = calculate_div_growth(shares_from_initial, div_as_decimal, current_total)
+            total_dividends += div_total  # add up dividend payouts from each payment
 
 
 
-    # drip_result = drip(new_dividends, selected_stock, shares_from_initial, starting_day, end_date)
-   # st.write("Current Number of Shares after DRIP: ", drip_result[1]) # [current cash, total shares]
+        st.write("Total dividends: ", str(total_dividends))
 
-   # stockHistory = get_history(selected_stock, starting_day, end_date)
-    # get the closing price closest to/on the starting date
-  #  closeDate, price = stockHistory[0]
-   # print("The closing price" , price)
-    #instead of showing the current cash value, calculate (number of shares after DRIP x current stock price) + any left over cash in the account
-   # current_cash_value = (float(drip_result[1]) * price) + float(drip_result[0])
+        #for DRIP
+        drip_results = drip(new_dividends, selected_stock, shares_from_initial, start_date, end_date)
+        df = pd.DataFrame(drip_results)
+        df['date'] = pd.to_datetime(df['date'])
+        df.set_index('date', inplace=True)
 
-    #print(current_cash_value)
-
+        st.subheader("Investment Growth Until End Date")
+        st.line_chart(df['total_value'])
 
 
 main()
