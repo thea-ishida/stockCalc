@@ -109,8 +109,48 @@ def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
         })
 
     st.write("Current Cash Value: ", total_value)
-
     return drip_data
+
+
+def split_analysis(splits, selected_stock):
+    st.subheader("Stock Split History")
+    number_splits = len(splits)
+    st.write(f"**Stock Splits**: {number_splits}")
+
+    if number_splits > 0:
+        recent_split_date = splits.index[-1].strftime('%Y-%m-%d')
+        st.write(f"**Most Recent Split Date**: {recent_split_date}")
+    else:
+        st.write("This stock has no recorded splits.")
+
+
+    st.subheader("Stock Split Evaluation")
+    if number_splits == 0:
+        st.info("This company has never split its stock")
+    elif number_splits < 3:
+        st.success("This company has had a few stock splits")
+    elif number_splits >= 3:
+        st.success("This company has had multiple stock splits. Investor confidence")
+    return
+
+
+def write_report(selected_stock):
+    company_name = selected_stock.info['longName']
+    business_summary = selected_stock.info['longBusinessSummary']
+    sector = selected_stock.info['sector']
+    industry = selected_stock.info['industry']
+
+    splits = selected_stock.splits #as a series
+    split_analysis(splits, selected_stock)
+
+    st.subheader("Company Overview")
+    st.write(f"**Company Name**: {company_name}")
+    st.write(f"**Sector**: {sector}")
+    st.write(f"***Business Summary***: {business_summary}")
+    st.write(f"*Industry*: {industry}")
+
+    return
+
 
         # if the amt (B) is large enough to purchase a share or more on this date (per close price)
         # you would make this buy, let's call the number of shares bough (C) and leftover cash (D)
@@ -127,9 +167,8 @@ def main():
     st.sidebar.header("Enter your stock information")
     ticker= st.sidebar.text_input("Enter stock ticker (e.g. AAPL):","AAPL")
     amount = st.sidebar.number_input("Initial Investment", min_value=0.0, value=0.0)
-    start_date = st.sidebar.date_input("Start Date").strftime("%Y-%m-%d")
-    end_date = st.sidebar.date_input("End Date").strftime("%Y-%m-%d")
-
+    start_date = st.sidebar.text_input("Start Date", "2012-02-01")
+    end_date = st.sidebar.text_input("End Date", "2025-06-02")
     calculate_button = st.sidebar.button("Calculate")
 
     if calculate_button:
@@ -161,13 +200,25 @@ def main():
         if new_dividends.empty:
             #print("This stock does not produce any dividends.")
             st.info("This stock does not produce any dividends.")
+
+            purchased_shares = determineShares(amount, start_date, selected_stock, end_date)
+
+            try:
+                end_price = selected_stock.history(start=end_date, end=end_date)["Close"].iloc[0]
+                print("Endprice if end date is found", end_price)
+            except:
+                end_price = selected_stock.history(end=end_date)["Close"].iloc[-1]
+                print("this is the end_price: ", end_price)
+
+            current_value = (purchased_shares * end_price)
+            st.write(f"Stock price on {end_date:}", end_price)
+            st.write(f"Final investment value: ${current_value:.2f}")
             return
 
 
+        #if stock pays dividends
         current_total = Decimal("0.0")  # holds running total
         total_dividends = Decimal("0.0")  # track the payout
-
-        data = []
         shares_from_initial = determineShares(amount, starting_day.strftime("%Y-%m-%d"), selected_stock, end_date)
         # print(shares_from_initial, "SHARES FROM INITIAL")
 
@@ -176,9 +227,9 @@ def main():
             div_total, current_total = calculate_div_growth(shares_from_initial, div_as_decimal, current_total)
             total_dividends += div_total  # add up dividend payouts from each payment
 
-
-
         st.write("Total dividends: ", str(total_dividends))
+        report = write_report(selected_stock)
+
 
         #for DRIP
         drip_results = drip(new_dividends, selected_stock, shares_from_initial, start_date, end_date)
@@ -189,5 +240,9 @@ def main():
         st.subheader("Investment Growth Until End Date")
         st.line_chart(df['total_value'])
 
+# If a stock does not pay dividends then do the calcualtion for number of shares you bought at the (startdate * price at the end date) = current value
+# Once you complete ^
+# Report : write a brief summary on the split history of the stock, provide a description of the company, what kind of business does it do, products that make it income.
+# Number of splits shows if this a good company to invest in
 
 main()
