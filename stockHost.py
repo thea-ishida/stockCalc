@@ -162,13 +162,29 @@ def write_report(selected_stock):
         # Do this until the (B) is large enough to purchase a new share of the stock then do so
 
 
+
+# As of rn, the investment total value chart depends on stock dividend payouts
+# for stock that don't pay dividends (amazon, or Netflix) the chart doesn't display at all.
+# as a user i would like to see the chart even for non dividend paying stocks. In the case
+# of Google per screenshot above, the chart only shows data starting from when it began paying dividends
+# July 2024. I'd like it to extend back to my selected start date. can this be improved?
+
+def non_dividend_growth_data(selected_stock, shares, start_date, end_date):
+    history = selected_stock.history(start=start_date, end=end_date) #represent as a dataframe
+
+    history = history[["Close"]].copy() #keep only closing price for each date
+    # get the total dollar value of the investment on each day, store in a new column called total_value
+    history["total_value"] = history["Close"] * shares #calculate the total value of the investment
+    history.index = pd.to_datetime(history.index)
+    return history[["total_value"]]
+
 def main():
     #sidebar inputs
     st.sidebar.header("Enter your stock information")
     ticker= st.sidebar.text_input("Enter stock ticker (e.g. AAPL):","AAPL")
     amount = st.sidebar.number_input("Initial Investment", min_value=0.0, value=0.0)
     start_date = st.sidebar.text_input("Start Date", "2012-02-01")
-    end_date = st.sidebar.text_input("End Date", "2025-06-02")
+    end_date = st.sidebar.text_input("End Date", "2025-06-02")      
     calculate_button = st.sidebar.button("Calculate")
 
     if calculate_button:
@@ -213,6 +229,13 @@ def main():
             current_value = (purchased_shares * end_price)
             st.write(f"Stock price on {end_date:}", end_price)
             st.write(f"Final investment value: ${current_value:.2f}")
+
+            df = non_dividend_growth_data(selected_stock, purchased_shares, start_date, end_date)
+
+            if not df.empty:
+                st.subheader("Investment Growth Until End Date")
+                st.line_chart(df['total_value'])
+
             return
 
 
