@@ -252,12 +252,35 @@ def main():
         price_history_df = selected_stock.history(start=start_date, end=end_date)[["Close"]].copy()
         price_history_df.index = pd.to_datetime(price_history_df.index)
 
+        # Get the first available price on or after the start date
 
+        start_ts = pd.to_datetime(start_date)
+
+        # Ensure the index is timezone-naive
+        if price_history_df.index.tz is not None:
+            price_history_df.index = price_history_df.index.tz_convert(None)
+
+        available_start = price_history_df[price_history_df.index >= start_ts].iloc[0]
+
+        initial_price = available_start['Close']
+        adjusted_start_date = available_start.name
+
+        initial_total_value = shares_from_initial * initial_price
+        initial_row = pd.DataFrame({
+            'shares': [shares_from_initial],
+            'cash': [0.0],
+            'total_value': [initial_total_value]
+        }, index=[adjusted_start_date])
 
         # convert drip_result to a dataFrame, set date as the index
         df = pd.DataFrame(drip_results)
         df['date'] = pd.to_datetime(df['date'])
         df.set_index('date', inplace=True)
+
+
+        df = pd.concat([initial_row, df])
+        df = df[~df.index.duplicated(keep='first')]
+        df = df.sort_index()
 
         # Make both indices tz-naive
         if price_history_df.index.tz is not None:
@@ -277,6 +300,6 @@ def main():
 
 
         st.subheader("Investment Growth Until End Date")
-        st.line_chart(df['total_value'])
+        st.line_chart(merged['total_value'])
 
 main()
