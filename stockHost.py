@@ -67,17 +67,9 @@ def determineShares(amount, startDate, selected_stock, end_date):
 
 
 def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
-   # print("got here")
-
-    #if not dividend_collection:
-    #    st.info("The stock you selected did not pay any dividends during the selected period.")
-     #   return []
-
     tot_shares = shares# c
     left_over_cash = 0 #(D)
     drip_data = []
-    #print("Starting amount of shares: ", tot_shares)
-
     price_history = dict(get_history(selected_stock, starting_day, end_date)) # store in a dictionary to get key, value
 
     for starting_day, dividend_per_share in dividend_collection.items():
@@ -136,8 +128,8 @@ def split_analysis(splits, selected_stock):
 
 def write_report(selected_stock):
     company_name = selected_stock.info['longName']
-    business_summary = selected_stock.info['longBusinessSummary']
-    sector = selected_stock.info['sector']
+    business_summary = selected_stock.info.get('longBusinessSummary', 'Summary not available.')
+    sector = selected_stock.info.get('sector', 'Sector not available.')
     industry = selected_stock.info['industry']
 
     splits = selected_stock.splits #as a series
@@ -150,19 +142,6 @@ def write_report(selected_stock):
     st.write(f"*Industry*: {industry}")
 
     return
-
-
-        # if the amt (B) is large enough to purchase a share or more on this date (per close price)
-        # you would make this buy, let's call the number of shares bough (C) and leftover cash (D)
-        # at this point, you need to track the current number of shares (A) = (A) + (C) and
-        # leftover cash (D)
-
-        # if the amt (B) is not enough to purchase a new share, put it into the leftover cash (D)
-        # Track the current leftover cash with (B) = (B) + (D)
-        # Do this until the (B) is large enough to purchase a new share of the stock then do so
-
-
-
 # As of rn, the investment total value chart depends on stock dividend payouts
 # for stock that don't pay dividends (amazon, or Netflix) the chart doesn't display at all.
 # as a user i would like to see the chart even for non dividend paying stocks. In the case
@@ -209,65 +188,64 @@ def main():
 
         # keep dividend payments that happened after the starting date
         new_dividends = selected_stock.dividends.loc[start_date:end_date]
-        # print("new dividends: ----> ", new_dividends)
+        purchased_shares = determineShares(amount, start_date, selected_stock, end_date)
+
+        price_growth_df = non_dividend_growth_data(selected_stock, 0, start_date, end_date)
+
         if new_dividends.empty:
-            #print("This stock does not produce any dividends.")
             st.info("This stock does not produce any dividends.")
-            purchased_shares = determineShares(amount, start_date, selected_stock, end_date)
             try:
                 end_price = selected_stock.history(start=end_date, end=end_date)["Close"].iloc[0]
-                print("Endprice if end date is found", end_price)
             except:
                 end_price = selected_stock.history(end=end_date)["Close"].iloc[-1]
-               # print("this is the end_price: ", end_price)
             current_value = (purchased_shares * end_price)
             st.write(f"Stock price on {end_date:}", end_price)
             st.write(f"Final investment value: ${current_value:.2f}")
 
-            df = non_dividend_growth_data(selected_stock, purchased_shares, start_date, end_date)
+            #df = non_dividend_growth_data(selected_stock, purchased_shares, start_date, end_date)
 
-            if not df.empty:
+            if not price_growth_df.empty:
                 st.subheader("Investment Growth Until End Date")
-                st.line_chart(df['total_value'])
+                st.line_chart(price_growth_df['total_value'])
             return
-
 
         #if stock pays dividends
         current_total = Decimal("0.0")  # holds running total
         total_dividends = Decimal("0.0")  # track the payout
-        shares_from_initial = determineShares(amount, starting_day.strftime("%Y-%m-%d"), selected_stock, end_date)
 
         for date, dividends_per_share in new_dividends.items():
             div_as_decimal = Decimal(str(dividends_per_share))
-            div_total, current_total = calculate_div_growth(shares_from_initial, div_as_decimal, current_total)
+            div_total, current_total = calculate_div_growth(purchased_shares, div_as_decimal, current_total)
             total_dividends += div_total  # add up dividend payouts from each payment
 
         st.write("Total dividends: ", str(total_dividends))
         write_report(selected_stock)
 
         #for DRIP
-        drip_results = drip(new_dividends, selected_stock, shares_from_initial, start_date, end_date)
+        drip_results = drip(new_dividends, selected_stock, purchased_shares, start_date, end_date)
 
         # get price history of entire selected period, set index of df to align with drip result
         price_history_df = selected_stock.history(start=start_date, end=end_date)[["Close"]].copy()
         price_history_df.index = pd.to_datetime(price_history_df.index)
 
         # Get the first available price on or after the start date
-
         start_ts = pd.to_datetime(start_date)
 
         # Ensure the index is timezone-naive
         if price_history_df.index.tz is not None:
             price_history_df.index = price_history_df.index.tz_convert(None)
 
-        available_start = price_history_df[price_history_df.index >= start_ts].iloc[0]
+        if start_ts in price_history_df.index:
+            adjusted_start_date = start_ts
+        else:
+            adjusted_start_date = price_history_df[price_history_df.index >= start_ts].index[0]
 
-        initial_price = available_start['Close']
-        adjusted_start_date = available_start.name
+        adjusted_start_date_row = price_history_df.loc[adjusted_start_date]  # if df is time-indexed
+        initial_price = adjusted_start_date_row['Close']
 
-        initial_total_value = shares_from_initial * initial_price
+        initial_total_value = purchased_shares  * initial_price
         initial_row = pd.DataFrame({
-            'shares': [shares_from_initial],
+            'shares': [purchased_shares ],
             'cash': [0.0],
             'total_value': [initial_total_value]
         }, index=[adjusted_start_date])
@@ -279,24 +257,16 @@ def main():
 
 
         df = pd.concat([initial_row, df])
-        df = df[~df.index.duplicated(keep='first')]
         df = df.sort_index()
+        df = df.reindex(price_history_df.index, method='ffill')
+        merged = price_history_df.join(df[['shares', 'cash']], how='left')
+        merged[['shares', 'cash']] = merged[['shares', 'cash']].ffill().fillna(method='bfill')
+        merged['total_value'] = merged['shares'] * merged['Close'] + merged['cash']
 
-        # Make both indices tz-naive
-        if price_history_df.index.tz is not None:
-            price_history_df.index = price_history_df.index.tz_convert(None)
-
-        if df.index.tz is not None:
-            df.index = df.index.tz_convert(None)
 
         # join daily price history with drip data on dates that match,
         # how= left: adds DRIP data on dividend dates
-        merged = price_history_df.join(df[['shares', 'cash']], how='left')
         # fill in missing shares and cash values by copying forward the last known value, get a continuous chart
-        merged[['shares', 'cash']] = merged[['shares', 'cash']].ffill().fillna(method='bfill')
-
-        # Compute total investment value for every date  = total_value = (number of shares) × (stock closing price) + leftover cash
-        merged['total_value'] = merged['shares'] * merged['Close'] + merged['cash']
 
 
         st.subheader("Investment Growth Until End Date")
