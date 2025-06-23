@@ -127,6 +127,7 @@ def split_analysis(splits, selected_stock):
     return
 
 
+
 def write_report(selected_stock):
     company_name = selected_stock.info['longName']
     business_summary = selected_stock.info.get('longBusinessSummary', 'Summary not available.')
@@ -202,10 +203,22 @@ def main():
 
         if new_dividends.empty:
             st.info("This stock does not produce any dividends.")
-            try:
-                end_price = selected_stock.history(start=end_date, end=end_date)["Close"].iloc[0]
-            except:
-                end_price = selected_stock.history(end=end_date)["Close"].iloc[-1]
+            price_data = selected_stock.history(start=end_date, end=end_date)
+            price_data = price_data[price_data.index <= pd.to_datetime(end_date)]
+
+
+            if not price_data.empty:
+                last_valid_row = price_data.iloc[-1]
+                last_valid_date = price_data.index[-1].strftime('%Y-%m-%d')
+                end_price = last_valid_row["Close"]
+
+                st.warning(f"No trading data available on {end_date} (possibly a weekend or holiday).")
+                st.write(f"Most recent price data available before {end_date} was on {last_valid_date}")
+                st.write(f"Stock price on {last_valid_date}: ${end_price:.2f}")
+            else:
+                st.error("No historical price data available before the end date.")
+                return
+
             current_value = (purchased_shares * end_price)
             st.write(f"Stock price on {end_date:}", end_price)
             st.write(f"Final investment value: ${current_value:.2f}")
@@ -275,7 +288,7 @@ def main():
             merged['total_value'] = merged['shares'] * merged['Close'] + merged['cash']
 
             st.subheader("Investment Growth Until End Date")
-            st.line_chart(merged['total_value'])
+            st.line_chart(merged['total_valsue'])
 
         # join daily price history with drip data on dates that match,
         # how= left: adds DRIP data on dividend dates
