@@ -288,7 +288,7 @@ def main():
             merged['total_value'] = merged['shares'] * merged['Close'] + merged['cash']
 
             st.subheader("Investment Growth Until End Date")
-            st.line_chart(merged['total_valsue'])
+            st.line_chart(merged['total_value'])
 
         # join daily price history with drip data on dates that match,
         # how= left: adds DRIP data on dividend dates
