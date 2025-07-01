@@ -4,7 +4,6 @@ from decimal import Decimal #for decimal precision
 import math
 import yfinance as fy
 from datetime import datetime
-import time
 
 
 header = st.container()
@@ -57,14 +56,29 @@ def calculate_div_growth(shares, dividend_per_share, current_sum):
     return total_dividend, cash_total
 
 #function to determine how many shares were bought on the starting date
-def determineShares(amount, startDate, selected_stock, end_date):
-    stockHistory = get_history(selected_stock, startDate, end_date)
-    # get the closing price closest to/on the starting date
-    closeDate, price = stockHistory[0]
-    st.write(f"Stock price on {closeDate}: ${price:.2f}")
-    shares = math.floor(float(amount)/ price)
-    st.write(f"Number of shares you purchased: {shares}")
+# def determineShares(amount, startDate, selected_stock, end_date):
+#     stockHistory = get_history(selected_stock, startDate, end_date)
+#     # get the closing price closest to/on the starting date
+#     closeDate, price = stockHistory[0]
+#     st.write(f"Stock price on {closeDate}: ${price:.2f}")
+#     shares = math.floor(float(amount)/ price)
+#     st.write(f"Number of shares you purchased: {shares}")
+#     return shares
+
+
+def determineShares(amount, startDate, closePrice):
+    currentDate = str(startDate)[0:10]
+    #print(currentDate, "CURRENT DATE")
+
+    priceOnStartDate = closePrice[currentDate]
+    print("close price at current date --- ", priceOnStartDate)
+
+    shares = math.floor((float(amount) / priceOnStartDate))
+   # print(f"Number of shares you purchased: {shares}")
     return shares
+
+
+
 
 
 def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
@@ -104,62 +118,101 @@ def drip(dividend_collection, selected_stock, shares, starting_day, end_date):
     st.write("Current Cash Value: ", total_value)
     return drip_data
 
-
-def split_analysis(splits, selected_stock):
-    st.subheader("Stock Split History")
-    number_splits = len(splits)
-    st.write(f"**Stock Splits**: {number_splits}")
-
-    if number_splits > 0:
-        recent_split_date = splits.index[-1].strftime('%Y-%m-%d')
-        st.write(f"**Most Recent Split Date**: {recent_split_date}")
-    else:
-        st.write("This stock has no recorded splits.")
-
-
-    st.subheader("Stock Split Evaluation")
-    if number_splits == 0:
-        st.info("This company has never split its stock")
-    elif number_splits < 3:
-        st.success("This company has had a few stock splits")
-    elif number_splits >= 3:
-        st.success("This company has had multiple stock splits. Investor confidence")
-    return
-
-
-
 def write_report(selected_stock):
-    company_name = selected_stock.info['longName']
+    company_name = selected_stock.info.get('longName', 'N/A')
     business_summary = selected_stock.info.get('longBusinessSummary', 'Summary not available.')
     sector = selected_stock.info.get('sector', 'Sector not available.')
     industry = selected_stock.info.get('industry', 'Industry not available.')
 
-    splits = selected_stock.splits #as a series
-    split_analysis(splits, selected_stock)
+    st.markdown("## 🏢 Company Overview")
 
-    st.subheader("Company Overview")
-    st.write(f"**Company Name**: {company_name}")
-    st.write(f"**Sector**: {sector}")
-    st.write(f"***Business Summary***: {business_summary}")
-    st.write(f"*Industry*: {industry}")
+    # Use columns to make it more compact and clean
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"**📛 Company Name:** {company_name}")
+        st.markdown(f"**🏭 Industry:** {industry}")
+    with col2:
+        st.markdown(f"**🏷️ Sector:** {sector}")
 
+    # Add a separator and formatted business summary
+    st.markdown("---")
+    st.markdown("### 📘 Business Summary")
+    st.markdown(f"<div style='text-align: justify;'>{business_summary}</div>", unsafe_allow_html=True)
     return
+
 # As of rn, the investment total value chart depends on stock dividend payouts
 # for stock that don't pay dividends (amazon, or Netflix) the chart doesn't display at all.
 # as a user i would like to see the chart even for non dividend paying stocks. In the case
 # of Google per screenshot above, the chart only shows data starting from when it began paying dividends
 # July 2024. I'd like it to extend back to my selected start date. can this be improved?
 
-def non_dividend_growth_data(selected_stock, shares, start_date, end_date):
-    history = selected_stock.history(start=start_date, end=end_date) #represent as a dataframe
+# def non_dividend_growth_data(selected_stock, shares, start_date, end_date):
+#
+#     history = selected_stock.history(start=start_date, end=end_date) #represent as a dataframe
+#
+#     history = history[["Close"]].copy() #keep only closing price for each date
+#     # get the total dollar value of the investment on each day, store in a new column called total_value
+#     history["total_value"] = history["Close"] * shares #calculate the total value of the investment
+#     history.index = pd.to_datetime(history.index)
+#     return history[["total_value"]]
 
-    history = history[["Close"]].copy() #keep only closing price for each date
-    # get the total dollar value of the investment on each day, store in a new column called total_value
-    history["total_value"] = history["Close"] * shares #calculate the total value of the investment
-    history.index = pd.to_datetime(history.index)
-    return history[["total_value"]]
+
+def SplitHistoryAnalysis(stockSplits, shares):
+    st.subheader("Stock Split History")
+    if not stockSplits:
+        st.write("This stock has not split during this period")
+        return
+
+    split_count = 0
+    split_info = []
+
+    for date, ratio in stockSplits.items():
+        if ratio != 0:
+            split_count += 1
+            split_info.append((date, ratio))
+
+    df_splits = {}
+
+    for key, value in stockSplits.items():
+        new_key = str(key)[0:10]
+        df_splits[new_key] = value
+
+    df = pd.DataFrame(df_splits.items(), columns = ["Date", "Split Ratio"])
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    print(split_count, "here is the split_count")
+    if split_count > 0:
+        st.success(f"This company has had {split_count} stock splits.")
+
+    current_shares = shares
+    total_shares = current_shares
+    print("CURRENT SHARES --> ", current_shares)
+    for date, split_ratio in split_info:
+        new_shares = (current_shares * split_ratio)
+        print("New shares ", new_shares)
+
+        total_shares += new_shares
+        print("total_shares: ", total_shares)
+
+
+    st.success(f"You now have {total_shares} number of shares")
+
+
+   # by the end of the chart, display how many shares we have now
+   # ex with apple stock : 1 share becomes 2 -> 2 x 7 x 4  = 56 shares
+   #
+ \
+
 
 def main():
+    '''
+    Take data from yahoo finance, throw it into a dictionary of my own choice,
+    the dictionary should only have the data we need from the dataframe
+    throughout my entire program, use the data accordingly so we don't have to make multiple API calls
+
+    :return:
+    '''
+
     #sidebar inputs
     st.sidebar.header("Enter your stock information")
     ticker= st.sidebar.text_input("Enter stock ticker (e.g. AAPL):","AAPL")
@@ -178,126 +231,36 @@ def main():
                     return
 
         selected_stock = fy.Ticker(ticker)
+
         st.write(f"Started with an initial investment of: $", amount)
-        dividends = selected_stock.dividends
-        starting_day = pd.to_datetime(start_date)
-
-        # calculate the number of times you receive the dividend and add up the total sum
-        timezone = dividends.index.tz
-        if timezone is not None:
-            starting_day = starting_day.tz_localize(timezone)
-        else:
-            starting_day = starting_day.localize(None)
-
-        # keep dividend payments that happened after the starting date
-        new_dividends = selected_stock.dividends.loc[start_date:end_date]
-
-        if (new_dividends.empty or new_dividends.sum() == 0) and use_drip:
-            st.warning("This stock does not pay dividends — DRIP (Dividend Reinvestment Plan) is not applicable.")
-
-        purchased_shares = determineShares(amount, start_date, selected_stock, end_date)
-
-        #price_growth_df = non_dividend_growth_data(selected_stock, 0, start_date, end_date)
-
-        price_growth_df = non_dividend_growth_data(selected_stock, purchased_shares, start_date, end_date)
-
-        if new_dividends.empty:
-            st.info("This stock does not produce any dividends.")
-            price_data = selected_stock.history(start=end_date, end=end_date)
-            price_data = price_data[price_data.index <= pd.to_datetime(end_date)]
+        stock_df = selected_stock.history(start=start_date, end=end_date)
+        split_series = stock_df["Stock Splits"]
+        split_series = split_series[split_series != 0]  # Only actual splits
+        split_series.index = split_series.index.astype(str)
 
 
-            if not price_data.empty:
-                last_valid_row = price_data.iloc[-1]
-                last_valid_date = price_data.index[-1].strftime('%Y-%m-%d')
-                end_price = last_valid_row["Close"]
+        data_dictionary = {
+            "name": selected_stock, #stored an a y-finance object
+            "start_date": start_date,
+            "end_date": end_date,
+            "starting_amount": amount,
+            "dates": stock_df.index,
+            "closePrice": stock_df["Close"],
+            "Dividends": stock_df["Dividends"],
+            "StockSplits": split_series.to_dict()
+        }
+       # st.write(data_dictionary)
 
-                st.warning(f"No trading data available on {end_date} (possibly a weekend or holiday).")
-                st.write(f"Most recent price data available before {end_date} was on {last_valid_date}")
-                st.write(f"Stock price on {last_valid_date}: ${end_price:.2f}")
-            else:
-                st.error("No historical price data available before the end date.")
-                return
-
-            current_value = (purchased_shares * end_price)
-            st.write(f"Stock price on {end_date:}", end_price)
-            st.write(f"Final investment value: ${current_value:.2f}")
-
-            #df = non_dividend_growth_data(selected_stock, purchased_shares, start_date, end_date)
-
-            if not price_growth_df.empty:
-                st.subheader("Investment Growth Until End Date")
-                st.line_chart(price_growth_df['total_value'])
-            return
-
-        #if stock pays dividends
-        current_total = Decimal("0.0")  # holds running total
-        total_dividends = Decimal("0.0")  # track the payout
-
-        for date, dividends_per_share in new_dividends.items():
-            div_as_decimal = Decimal(str(dividends_per_share))
-            div_total, current_total = calculate_div_growth(purchased_shares, div_as_decimal, current_total)
-            total_dividends += div_total  # add up dividend payouts from each payment
-
-        st.write("Total dividends: ", str(total_dividends))
+        # Company Overview
         write_report(selected_stock)
 
-       # st.write("use_drip is:", use_drip)
+        # Split history
+        shares = determineShares(amount, start_date, data_dictionary.get("closePrice"))
 
-        #for DRIP
-        if use_drip:
-            drip_results = drip(new_dividends, selected_stock, purchased_shares, start_date, end_date)
+        SplitHistoryAnalysis(data_dictionary.get("StockSplits"), shares)
 
-            # get price history of entire selected period, set index of df to align with drip result
-            price_history_df = selected_stock.history(start=start_date, end=end_date)[["Close"]].copy()
-            price_history_df.index = pd.to_datetime(price_history_df.index)
+        # get shares
 
-            # Get the first available price on or after the start date
-            start_ts = pd.to_datetime(start_date)
-
-        # Ensure the index is timezone-naive
-            if price_history_df.index.tz is not None:
-                price_history_df.index = price_history_df.index.tz_convert(None)
-
-            if start_ts in price_history_df.index:
-                adjusted_start_date = start_ts
-            else:
-                adjusted_start_date = price_history_df[price_history_df.index >= start_ts].index[0]
-
-            adjusted_start_date_row = price_history_df.loc[adjusted_start_date]  # if df is time-indexed
-            initial_price = adjusted_start_date_row['Close']
-
-            initial_total_value = purchased_shares  * initial_price
-            initial_row = pd.DataFrame({
-                'shares': [purchased_shares ],
-                'cash': [0.0],
-                'total_value': [initial_total_value]
-            }, index=[adjusted_start_date])
-
-             # convert drip_result to a dataFrame, set date as the index
-            df = pd.DataFrame(drip_results)
-            df['date'] = pd.to_datetime(df['date'])
-            df.set_index('date', inplace=True)
-
-
-            df = pd.concat([initial_row, df])
-            df = df.sort_index()
-            df = df.reindex(price_history_df.index, method='ffill')
-            merged = price_history_df.join(df[['shares', 'cash']], how='left')
-            merged[['shares', 'cash']] = merged[['shares', 'cash']].ffill().fillna(method='bfill')
-            merged['total_value'] = merged['shares'] * merged['Close'] + merged['cash']
-
-            st.subheader("Investment Growth Until End Date")
-            st.line_chart(merged['total_value'])
-
-        # join daily price history with drip data on dates that match,
-        # how= left: adds DRIP data on dividend dates
-        # fill in missing shares and cash values by copying forward the last known value, get a continuous chart
-
-        else: # if the user does not want DRIP growth
-            st.subheader("Investment Growth Without DRIP")
-            st.line_chart(price_growth_df['total_value'])
-
-        st.download_button("Download Data", price_growth_df.to_csv(), file_name="investment_data.csv")
-
+        #use drip
+        #drip(Dividends, selected_stock, )
 main()
